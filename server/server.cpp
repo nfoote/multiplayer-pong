@@ -47,6 +47,26 @@ int main(int argc, char **argv) {
     WSADATA wsa; WSAStartup(MAKEWORD(2, 2), &wsa);
 #endif
 
+    // Game constants
+    const float W = 800.f, H = 450.f; // world size
+    const float PADDLE_H = 80.f, PADDLE_W = 10.f;
+    const float BALL_R = 6.f;
+    const float PADDLE_SPEED = 260.f; // px/s
+    const float BALL_SPEED = 260.f;
+
+    // Authoritative state
+    SState st{};
+    st.tick = 0;
+    st.ballX = W * 0.5f;
+    st.ballY = H * 0.5f;
+    st.ballVX = BALL_SPEED;
+    st.ballVY = BALL_SPEED * 0.6f;
+    st.paddleY[0] = H * 0.5f; // center
+    st.paddleY[1] = H * 0.5f;
+
+    // Per-client input latch (0 or BTN_UP/DOWN or both)
+    uint8_t inputs[2] = {0, 0};
+
     int port = 7777;
     if (argc >= 3 && std::string(argv[1]) == "--port") port = std::atoi(argv[2]);
 
@@ -113,63 +133,150 @@ int main(int argc, char **argv) {
 
     printf("[srv] two clients connected, starting 1 Hz broadcast + ping handler\n");
 
-    uint32_t tick = 0;
-    while (true) {
-        // --- 1) Handle any incoming messages (non-blocking select) -------------
-        fd_set readfds;
-        FD_ZERO(&readfds);
+    auto nextTick = std::chrono::steady_clock::now();
+    const auto dt = std::chrono::milliseconds(16); // ~60Hz
+    auto nextBroadcast = nextTick; // broadcast at 20Hz
+    constexpr int broadcastEvery = 3; // every 3 ticks (~20Hz)
+
+    for (;;) {
+        // ---- 1) Poll inputs often (≤ 2 ms) ----
+        fd_set rfds;
+        FD_ZERO(&rfds);
         int maxfd = -1;
         for (int c: clients) {
-            FD_SET(c, &readfds);
+            FD_SET(c, &rfds);
             if (c > maxfd) maxfd = c;
         }
-        timeval tv{0, 0}; // poll, don't block
-        int ready = select(maxfd + 1, &readfds, nullptr, nullptr, &tv);
 
+        auto now_for_poll = std::chrono::steady_clock::now();
+        auto remain = nextTick - now_for_poll;
+
+        if (remain > std::chrono::milliseconds(2)) remain = std::chrono::milliseconds(2);
+        if (remain < std::chrono::milliseconds(0)) remain = std::chrono::milliseconds(0);
+
+        long usec = std::chrono::duration_cast<std::chrono::microseconds>(remain).count();
+        timeval tv{(int) (usec / 1000000), (int) (usec % 1000000)};
+
+        int ready = select(maxfd + 1, &rfds, nullptr, nullptr, &tv);
         if (ready > 0) {
-            for (int c: clients) {
-                if (!FD_ISSET(c, &readfds)) continue;
+            for (size_t i = 0; i < clients.size();) {
+                int c = clients[i];
+                if (!FD_ISSET(c, &rfds)) {
+                    ++i;
+                    continue;
+                }
 
                 MsgHeader h{};
                 if (!recv_header(c, h)) {
-                    printf("[srv] client disconnected; shutting down demo\n");
+                    printf("[srv] client[%zu] disconnected\n", i);
                     closesocket(c);
-                    return 0; // (tutorial: exit; production: remove this client and continue)
+                    clients.erase(clients.begin() + (long) i);
+                    continue;
                 }
 
                 if (h.type == C_PING && h.size == sizeof(CPing)) {
-                    CPing ping{};
-                    if (!recv_payload(c, ping)) continue;
-                    SPong pong{ping.clientSendMs, now_unix_ms()};
-                    send_msg(c, S_PONG, pong);
-                    printf("[srv] handled C_PING -> S_PONG\n");
+                    CPing p{};
+                    if (recv_payload(c, p)) {
+                        SPong q{p.clientSendMs, now_unix_ms()};
+                        send_msg(c, S_PONG, q);
+                    } else {
+                        closesocket(c);
+                        clients.erase(clients.begin() + (long) i);
+                        continue;
+                    }
+                } else if (h.type == C_INPUT && h.size == sizeof(CInput)) {
+                    CInput ci{};
+                    if (!recv_payload(c, ci)) {
+                        closesocket(c);
+                        clients.erase(clients.begin() + (long) i);
+                        continue;
+                    }
+                    size_t playerIndex = i;
+                    if (playerIndex > 1) playerIndex = 1;
+                    inputs[playerIndex] = ci.buttons;
                 } else {
-                    // drain unknown payload
                     std::vector<char> junk(h.size);
                     if (!recv_all(c, junk.data(), (int) junk.size())) {
-                        printf("[srv] payload read error; closing client\n");
                         closesocket(c);
-                        return 0;
+                        clients.erase(clients.begin() + (long) i);
+                        continue;
                     }
                 }
+                ++i;
             }
         }
 
-        // --- 2) Broadcast server tick once per second ---------------------------
-        tick++;
-        SBroadcast b{tick, now_unix_ms()};
-        for (int c: clients) {
-            if (!send_msg(c, S_BROADCAST, b)) {
-                printf("[srv] send failed; closing\n");
-                closesocket(c);
-                return 0;
+        // ---- 2) Fixed tick ----
+        auto now = std::chrono::steady_clock::now();
+        if (now < nextTick) continue;
+        nextTick += dt;
+        st.tick++;
+
+        // Apply inputs to paddles
+        static constexpr uint8_t BTN_UP = 1 << 0;
+        static constexpr uint8_t BTN_DOWN = 1 << 1;
+        const float PADDLE_SPEED = 260.f, H = 450.f, PADDLE_H = 80.f;
+        for (int p = 0; p < 2 && p < (int) clients.size(); ++p) {
+            float dir = 0.f;
+            if (inputs[p] & BTN_UP) dir -= 1.f;
+            if (inputs[p] & BTN_DOWN) dir += 1.f;
+            st.paddleY[p] += dir * PADDLE_SPEED * (16.0f / 1000.f);
+            if (st.paddleY[p] < PADDLE_H * 0.5f) st.paddleY[p] = PADDLE_H * 0.5f;
+            if (st.paddleY[p] > H - PADDLE_H * 0.5f) st.paddleY[p] = H - PADDLE_H * 0.5f;
+        }
+
+        // Move ball + simple collisions
+        const float W = 800.f, BALL_R = 6.f;
+        st.ballX += st.ballVX * (16.0f / 1000.f);
+        st.ballY += st.ballVY * (16.0f / 1000.f);
+
+        if (st.ballY < BALL_R) {
+            st.ballY = BALL_R;
+            st.ballVY = -st.ballVY;
+        }
+        if (st.ballY > H - BALL_R) {
+            st.ballY = H - BALL_R;
+            st.ballVY = -st.ballVY;
+        }
+
+        auto collidePaddle = [&](float px, float pyCenter, int side) {
+            const float PADDLE_W = 10.f;
+            const float halfH = PADDLE_H * 0.5f;
+            float left = px - PADDLE_W * 0.5f, right = px + PADDLE_W * 0.5f;
+            float top = pyCenter - halfH, bot = pyCenter + halfH;
+            if (st.ballX + BALL_R < left || st.ballX - BALL_R > right) return false;
+            if (st.ballY + BALL_R < top || st.ballY - BALL_R > bot) return false;
+            st.ballX = (side == 0) ? right + BALL_R : left - BALL_R;
+            st.ballVX = (side == 0) ? std::abs(st.ballVX) : -std::abs(st.ballVX);
+            float t = (st.ballY - pyCenter) / halfH;
+            st.ballVY += t * 60.f;
+            return true;
+        };
+        collidePaddle(20.f, st.paddleY[0], 0);
+        collidePaddle(W - 20.f, st.paddleY[1], 1);
+
+        if (st.ballX < -20.f || st.ballX > W + 20.f) {
+            const float BALL_SPEED = 260.f;
+            st.ballX = W * 0.5f;
+            st.ballY = H * 0.5f;
+            st.ballVX = (st.ballVX < 0 ? 1.f : -1.f) * BALL_SPEED;
+            st.ballVY = BALL_SPEED * 0.6f;
+        }
+
+        // ---- 3) Broadcast ~20 Hz ----
+        if ((st.tick % broadcastEvery) == 0) {
+            for (size_t i = 0; i < clients.size();) {
+                int c = clients[i];
+                if (!send_msg(c, S_STATE, st)) {
+                    closesocket(c);
+                    clients.erase(clients.begin() + (long) i);
+                    continue;
+                }
+                ++i;
             }
         }
-        printf("[srv] broadcast tick=%u unixMs=%llu\n",
-               tick, (unsigned long long) b.serverUnixMs);
-
-        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
+
 
 #ifdef _WIN32
     WSACleanup();
