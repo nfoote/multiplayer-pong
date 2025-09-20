@@ -41,5 +41,5 @@
 **/*.out
 **/*.app
 
-# Logs (optional—keep if you want logs in repo)
+# Logs
 **/*.log

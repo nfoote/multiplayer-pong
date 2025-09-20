@@ -8,8 +8,22 @@ struct MsgHeader { uint8_t type; uint16_t size; };
 enum : uint8_t {
     S_HELLO     = 1,   // server -> client greeting
     S_BROADCAST = 2,   // server -> client tick
-    C_HELLO     = 10   // client -> server greeting
+    C_HELLO     = 10,   // client -> server greeting
+    C_PING = 4,
+    S_PONG = 5
   };
+
+#pragma pack(push,1)
+struct CPing {
+    uint64_t clientSendMs;
+};
+
+struct SPong {
+    uint64_t clientSendMs;
+    uint64_t serverRecvMs;
+};
+#pragma pack(pop)
+
 
 struct SHello { uint32_t serverStartMs; };
 struct SBroadcast { uint32_t tick; uint64_t serverUnixMs; };
