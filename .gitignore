@@ -1,41 +1,45 @@
-# Prerequisites
-*.d
+# --- CMake / Ninja build dirs (CLion defaults) ---
+/build/
+/cmake-build-*/
+/out/
 
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# CMake internals (in case someone builds outside those dirs)
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/CTestTestfile.cmake
+**/Testing/
+**/Makefile
+**/build.ninja
+**/rules.ninja
+**/*.cmake
 
-# Precompiled Headers
-*.gch
-*.pch
+# Compiled objects & libs
+**/*.o
+**/*.obj
+**/*.a
+**/*.so
+**/*.dylib
+**/*.dll
+**/*.lib
+**/*.lo
+**/*.la
+**/*.pdb
+**/*.ilk
 
-# Linker files
-*.ilk
+# CLion / IDE
+.idea/
+*.iml
+.vs/
+.vscode/
 
-# Debugger Files
-*.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
+# macOS
+.DS_Store
 
 # Executables
-*.exe
-*.out
-*.app
+**/*.exe
+**/*.out
+**/*.app
 
-# debug information files
-*.dwo
+# Logs (optional—keep if you want logs in repo)
+**/*.log
