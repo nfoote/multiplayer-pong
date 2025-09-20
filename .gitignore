@@ -1,0 +1,45 @@
+# --- CMake / Ninja build dirs (CLion defaults) ---
+/build/
+/cmake-build-*/
+/out/
+
+# CMake internals (in case someone builds outside those dirs)
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/CTestTestfile.cmake
+**/Testing/
+**/Makefile
+**/build.ninja
+**/rules.ninja
+**/*.cmake
+
+# Compiled objects & libs
+**/*.o
+**/*.obj
+**/*.a
+**/*.so
+**/*.dylib
+**/*.dll
+**/*.lib
+**/*.lo
+**/*.la
+**/*.pdb
+**/*.ilk
+
+# CLion / IDE
+.idea/
+*.iml
+.vs/
+.vscode/
+
+# macOS
+.DS_Store
+
+# Executables
+**/*.exe
+**/*.out
+**/*.app
+
+# Logs (optional—keep if you want logs in repo)
+**/*.log
