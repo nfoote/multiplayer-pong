@@ -213,8 +213,6 @@ int main(int argc, char **argv) {
         st.tick++;
 
         // Apply inputs to paddles
-        static constexpr uint8_t BTN_UP = 1 << 0;
-        static constexpr uint8_t BTN_DOWN = 1 << 1;
         const float PADDLE_SPEED = 260.f, H = 450.f, PADDLE_H = 80.f;
         for (int p = 0; p < 2 && p < (int) clients.size(); ++p) {
             float dir = 0.f;

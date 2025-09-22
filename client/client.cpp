@@ -107,19 +107,19 @@ int main(int argc, char **argv) {
                 break;
             }
             printf("[cli] S_BROADCAST: tick=%u serverUnixMs=%llu\n",
-                   b.tick, (unsigned long long) b.serverUnixMs);
+                   b.tick, static_cast<unsigned long long>(b.serverUnixMs));
         } else if (h.type == S_PONG && h.size == sizeof(SPong)) {
             SPong p{};
             if (!recv_payload(s, p)) {
                 printf("[cli] payload read error\n");
                 break;
             }
-            uint64_t nowMs = (uint64_t) std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-            uint64_t rtt = nowMs - p.clientSendMs;
+            const uint64_t nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
+            const uint64_t rtt = nowMs - p.clientSendMs;
             printf("[cli] S_PONG: RTT=%llums (serverRecvMs=%llu)\n",
-                   (unsigned long long) rtt,
-                   (unsigned long long) p.serverRecvMs);
+                   static_cast<unsigned long long>(rtt),
+                   static_cast<unsigned long long>(p.serverRecvMs));
         }
         else if (h.type == S_STATE && h.size == sizeof(SState)) {
             SState st{};
@@ -135,8 +135,8 @@ int main(int argc, char **argv) {
         // Periodic ping (every ~3s). This relies on receiving something periodically.
         auto now = std::chrono::steady_clock::now();
         if (now - lastPing > std::chrono::seconds(3)) {
-            uint64_t nowMs = (uint64_t) std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
+            const uint64_t nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count());
             CPing ping{nowMs};
             send_msg(s, C_PING, ping);
             lastPing = now;
